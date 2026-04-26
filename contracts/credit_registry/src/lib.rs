@@ -1,6 +1,9 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, Env, Address, String, BytesN};
 
+pub mod types;
+pub mod errors;
+
 #[contract]
 pub struct CreditRegistry;
 
