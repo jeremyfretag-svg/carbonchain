@@ -40,7 +40,7 @@ cd carbonchain
 3. Add upstream remote:
 
 ```bash
-git remote add upstream git@github-legend-esc:legend-esc/carbonchain.git
+git remote add upstream https://github.com/legend-esc/carbonchain.git
 ```
 
 4. Create a feature branch (see [Branch Naming Conventions](#branch-naming-conventions))
@@ -530,4 +530,4 @@ If you have questions or encounter issues:
 
 Thank you for contributing to CarbonChain!
 
-> Repository: [git@github-legend-esc:legend-esc/carbonchain.git](github-legend-esc:legend-esc/carbonchain.git)
+> Repository: [https://github.com/legend-esc/carbonchain.git](github-legend-esc:legend-esc/carbonchain.git)
