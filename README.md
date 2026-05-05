@@ -478,18 +478,7 @@ See `docs/README.md` for the complete documentation index.
 
 ---
 
-## Contributing (Stellar Wave)
-
-CarbonChain participates in the **Stellar Wave program on Drips** — a monthly, funded open-source contribution sprint where contributors earn real rewards for merged pull requests.
-
-**How to contribute:**
-
-1. Browse open issues labelled `stellar-wave` on this repo
-2. Sign in at [drips.network/wave/stellar](https://drips.network/wave/stellar) with your GitHub account
-3. Apply to work on an issue through the Drips Wave app
-4. Wait for maintainer assignment (within 24 hours)
-5. Submit a PR within the Wave window (7 days)
-6. Earn Points → earn rewards
+## Contributing
 
 Read `CONTRIBUTING.md` before submitting a PR for code style, commit conventions, and the PR checklist.
 
