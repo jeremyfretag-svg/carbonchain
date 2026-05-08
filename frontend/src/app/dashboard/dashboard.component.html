@@ -1,0 +1,130 @@
+<div class="dashboard">
+  <!-- Header -->
+  <header class="dashboard__header">
+    <h1 class="dashboard__title">Carbon Credit Portfolio</h1>
+
+    <div class="dashboard__wallet">
+      @if (wallet.isConnected()) {
+        <span class="wallet-address" [title]="wallet.publicKey()!">
+          {{ wallet.publicKey()! | slice: 0 : 6 }}…{{ wallet.publicKey()! | slice: -4 }}
+        </span>
+      } @else {
+        <button
+          class="btn btn--primary"
+          (click)="connectWallet()"
+          [disabled]="wallet.state() === 'connecting'"
+          aria-label="Connect Freighter wallet"
+        >
+          {{ wallet.state() === 'connecting' ? 'Connecting…' : 'Connect Wallet' }}
+        </button>
+      }
+    </div>
+  </header>
+
+  <!-- Wallet error -->
+  @if (wallet.error()) {
+    <p class="alert alert--error" role="alert">{{ wallet.error() }}</p>
+  }
+
+  <!-- Stats bar -->
+  @if (wallet.isConnected()) {
+    <section class="stats" aria-label="Portfolio summary">
+      <div class="stat-card">
+        <span class="stat-card__label">Total Credits</span>
+        <span class="stat-card__value">{{ store.credits().length }}</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-card__label">Active</span>
+        <span class="stat-card__value">{{ store.activeCredits().length }}</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-card__label">Retired</span>
+        <span class="stat-card__value">{{ store.retiredCredits().length }}</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-card__label">Total Tonnes</span>
+        <span class="stat-card__value">{{ store.totalTonnes().toLocaleString() }}</span>
+      </div>
+    </section>
+
+    <!-- Loading / error states -->
+    @if (store.isLoading()) {
+      <p class="status-msg" aria-live="polite">Loading credits…</p>
+    } @else if (store.error()) {
+      <p class="alert alert--error" role="alert">{{ store.error() }}</p>
+    } @else if (store.credits().length === 0) {
+      <p class="status-msg">No credits found for this account.</p>
+    } @else {
+      <!-- Credit table -->
+      <section class="credits-section" aria-label="Credit list">
+        <table class="credits-table">
+          <thead>
+            <tr>
+              <th scope="col">ID</th>
+              <th scope="col">Project</th>
+              <th scope="col">Vintage</th>
+              <th scope="col">Methodology</th>
+              <th scope="col">Geography</th>
+              <th scope="col">Tonnes</th>
+              <th scope="col">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (credit of store.credits(); track credit.id) {
+              <tr
+                class="credits-table__row"
+                [class.credits-table__row--selected]="store.selectedId() === credit.id"
+                (click)="selectCredit(credit.id)"
+                [attr.aria-selected]="store.selectedId() === credit.id"
+              >
+                <td class="monospace">{{ credit.id | slice: 0 : 8 }}…</td>
+                <td class="monospace">{{ credit.project_id | slice: 0 : 8 }}…</td>
+                <td>{{ credit.vintage_year }}</td>
+                <td>{{ credit.methodology }}</td>
+                <td>{{ credit.geography }}</td>
+                <td>{{ formatTonnes(credit.tonnes) }}</td>
+                <td>
+                  <span class="badge" [attr.data-status]="credit.status">
+                    {{ credit.status }}
+                  </span>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Detail panel for selected credit -->
+      @if (store.selected()) {
+        <aside class="detail-panel" aria-label="Credit detail">
+          <h2 class="detail-panel__title">Credit Detail</h2>
+          <dl class="detail-list">
+            <dt>ID</dt>
+            <dd class="monospace">{{ store.selected()!.id }}</dd>
+            <dt>Project</dt>
+            <dd class="monospace">{{ store.selected()!.project_id }}</dd>
+            <dt>Issuer</dt>
+            <dd class="monospace">{{ store.selected()!.issuer }}</dd>
+            <dt>Vintage</dt>
+            <dd>{{ store.selected()!.vintage_year }}</dd>
+            <dt>Methodology</dt>
+            <dd>{{ store.selected()!.methodology }}</dd>
+            <dt>Geography</dt>
+            <dd>{{ store.selected()!.geography }}</dd>
+            <dt>Tonnes</dt>
+            <dd>{{ formatTonnes(store.selected()!.tonnes) }}</dd>
+            <dt>IPFS</dt>
+            <dd class="monospace">{{ store.selected()!.ipfs_hash }}</dd>
+            <dt>Status</dt>
+            <dd>
+              <span class="badge" [attr.data-status]="store.selected()!.status">
+                {{ store.selected()!.status }}
+              </span>
+            </dd>
+          </dl>
+          <button class="btn btn--ghost" (click)="selectCredit(store.selectedId()!)">Close</button>
+        </aside>
+      }
+    }
+  }
+</div>

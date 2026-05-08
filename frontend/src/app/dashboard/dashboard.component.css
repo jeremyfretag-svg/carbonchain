@@ -1,0 +1,214 @@
+/* Layout */
+.dashboard {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  font-family: inherit;
+}
+
+/* Header */
+.dashboard__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+}
+
+.dashboard__title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Wallet address pill */
+.wallet-address {
+  font-family: monospace;
+  font-size: 0.875rem;
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+  border-radius: 9999px;
+  padding: 0.25rem 0.75rem;
+}
+
+/* Buttons */
+.btn {
+  cursor: pointer;
+  border-radius: 0.375rem;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: none;
+  transition: opacity 0.15s;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn--primary {
+  background: #16a34a;
+  color: #fff;
+}
+.btn--primary:hover:not(:disabled) {
+  background: #15803d;
+}
+.btn--ghost {
+  background: transparent;
+  border: 1px solid #d1d5db;
+  color: #374151;
+}
+.btn--ghost:hover {
+  background: #f9fafb;
+}
+
+/* Alerts */
+.alert {
+  padding: 0.75rem 1rem;
+  border-radius: 0.375rem;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+}
+.alert--error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+/* Status message */
+.status-msg {
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin: 2rem 0;
+  text-align: center;
+}
+
+/* Stats bar */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.stat-card {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat-card__label {
+  font-size: 0.75rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-card__value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+/* Table */
+.credits-section {
+  overflow-x: auto;
+}
+
+.credits-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.credits-table th {
+  text-align: left;
+  padding: 0.625rem 0.75rem;
+  background: #f3f4f6;
+  color: #374151;
+  font-weight: 600;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.credits-table td {
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid #f3f4f6;
+  color: #111827;
+}
+
+.credits-table__row {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.credits-table__row:hover {
+  background: #f9fafb;
+}
+.credits-table__row--selected {
+  background: #f0fdf4;
+}
+
+/* Status badge */
+.badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.badge[data-status='Active'] {
+  background: #dcfce7;
+  color: #166534;
+}
+.badge[data-status='Pending'] {
+  background: #fef9c3;
+  color: #854d0e;
+}
+.badge[data-status='Retired'] {
+  background: #f3f4f6;
+  color: #374151;
+}
+.badge[data-status='Flagged'] {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* Detail panel */
+.detail-panel {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+}
+
+.detail-panel__title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 1rem;
+}
+
+.detail-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.5rem 1.5rem;
+  margin: 0 0 1.25rem;
+  font-size: 0.875rem;
+}
+
+.detail-list dt {
+  color: #6b7280;
+  font-weight: 500;
+}
+.detail-list dd {
+  margin: 0;
+  color: #111827;
+  word-break: break-all;
+}
+
+/* Utility */
+.monospace {
+  font-family: monospace;
+}
