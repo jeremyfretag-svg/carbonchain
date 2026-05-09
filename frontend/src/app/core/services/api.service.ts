@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { CreditMetadata, ProjectProfile } from '@shared';
+import { CreditMetadata, ProjectProfile, Offer } from '@shared';
 
 // ---------------------------------------------------------------------------
 // Response types mirroring the NestJS controllers
@@ -83,6 +83,28 @@ export class ApiService {
   /** GET /credits/project/:projectId */
   listCreditsByProject(projectId: string): Observable<string[]> {
     return this.http.get<string[]>(`${this.baseUrl}/credits/project/${projectId}`);
+  }
+
+  // ── Marketplace ───────────────────────────────────────────────────────────
+
+  /** GET /marketplace/offer/:id */
+  getOffer(id: number): Observable<Offer> {
+    return this.http.get<Offer>(`${this.baseUrl}/marketplace/offer/${id}`);
+  }
+
+  /** GET /marketplace/seller/:address */
+  getOffersBySeller(address: string): Observable<string[]> {
+    return this.http.get<string[]>(`${this.baseUrl}/marketplace/seller/${address}`);
+  }
+
+  /** POST /marketplace/offer */
+  createOffer(
+    body: { sellerPublicKey: string; creditId: string; priceXlm: string; tonnes: string },
+    token: string,
+  ): Observable<{ offerId: string }> {
+    return this.http.post<{ offerId: string }>(`${this.baseUrl}/marketplace/offer`, body, {
+      headers: this.authHeaders(token),
+    });
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
