@@ -7,6 +7,7 @@ import { CreditsModule } from './credits/credits.module';
 import { ProjectsModule } from './projects/projects.module';
 import { AuthModule } from './auth/auth.module';
 import { VerifiersModule } from './verifiers/verifiers.module';
+import { RetirementModule } from './retirement/retirement.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { VerifiersModule } from './verifiers/verifiers.module';
     ProjectsModule,
     AuthModule,
     VerifiersModule,
+    RetirementModule,
   ],
   controllers: [AppController],
   providers: [AppService],
