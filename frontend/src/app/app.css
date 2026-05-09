@@ -1,0 +1,13 @@
+header { font-size: 0.9rem; }
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  background: #1a1a2e;
+  color: #fff;
+}
+.logo { font-size: 1.1rem; font-weight: 700; margin-right: auto; }
+nav a { color: #ccc; text-decoration: none; margin-right: 1rem; }
+nav a:hover { color: #fff; }
+main { padding: 1.5rem; }
