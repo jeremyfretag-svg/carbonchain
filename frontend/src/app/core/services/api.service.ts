@@ -97,6 +97,23 @@ export class ApiService {
     return this.http.get<string[]>(`${this.baseUrl}/marketplace/seller/${address}`);
   }
 
+  // ── Retirement ────────────────────────────────────────────────────────────
+
+  /** POST /retirement */
+  retireCredit(
+    body: { buyerPublicKey: string; creditId: string; tonnes: string; reason: string },
+    token: string,
+  ): Observable<{ retirementId: string }> {
+    return this.http.post<{ retirementId: string }>(`${this.baseUrl}/retirement`, body, {
+      headers: this.authHeaders(token),
+    });
+  }
+
+  /** GET /retirement/:id */
+  getRetirement(id: string): Observable<import('@shared').RetirementRecord> {
+    return this.http.get<import('@shared').RetirementRecord>(`${this.baseUrl}/retirement/${id}`);
+  }
+
   /** POST /marketplace/offer */
   createOffer(
     body: { sellerPublicKey: string; creditId: string; priceXlm: string; tonnes: string },
