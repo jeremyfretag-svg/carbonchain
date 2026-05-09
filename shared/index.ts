@@ -1,8 +1,8 @@
 export enum CreditStatus {
-  Pending = 'Pending',
-  Active = 'Active',
-  Retired = 'Retired',
-  Flagged = 'Flagged',
+  Pending = "Pending",
+  Active = "Active",
+  Retired = "Retired",
+  Flagged = "Flagged",
 }
 
 export interface CreditMetadata {
@@ -28,10 +28,55 @@ export interface ProjectProfile {
   documents_cid: string;
 }
 
+export interface RetirementRecord {
+  id: string;
+  credit_id: string;
+  buyer: string;
+  tonnes_retired: string; // BigInt as string
+  reason: string;
+  retired_at: number;
+  tx_hash: string;
+}
+
+export interface Offer {
+  id: string;
+  seller: string;
+  credit_id: string;
+  price_xlm: string; // BigInt as string (stroops)
+  tonnes_available: string;
+  created_at: number;
+  status: "open" | "filled" | "cancelled";
+}
+
+export interface MrvDataPoint {
+  project_id: string;
+  oracle: string;
+  tonnes_sequestered: string; // BigInt as string
+  measurement_date: number;
+  methodology: string;
+  anomaly_flag: boolean;
+}
+
+export interface OperationContext {
+  session_id: string;
+  operation: string;
+  actor: string;
+  target_id: string;
+  result: "success" | "failure";
+  timestamp: number;
+  metadata: Record<string, string>;
+}
+
+export interface AuditLog {
+  log_id: number;
+  context: OperationContext;
+  tx_hash: string;
+}
+
 export interface InteractionSession {
   session_id: string;
   initiator: string;
   created_at: number;
   operation_count: number;
-  status: 'active' | 'completed';
+  status: "active" | "completed";
 }
