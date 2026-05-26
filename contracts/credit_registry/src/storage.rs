@@ -1,6 +1,11 @@
 use soroban_sdk::{Env, Address, BytesN, Vec, String};
 use crate::types::{DataKey, CreditMetadata};
 
+/// Minimum TTL in ledgers (~1 year at 5s/ledger).
+pub const MIN_TTL: u32 = 6_307_200;
+/// Threshold below which TTL is extended (half of MIN_TTL).
+pub const TTL_THRESHOLD: u32 = MIN_TTL / 2;
+
 pub fn set_admin(env: &Env, admin: &Address) {
     env.storage().instance().set(&DataKey::Admin, admin);
 }
@@ -14,7 +19,9 @@ pub fn has_admin(env: &Env) -> bool {
 }
 
 pub fn set_credit(env: &Env, id: &BytesN<32>, metadata: &CreditMetadata) {
-    env.storage().persistent().set(&DataKey::Credit(id.clone()), metadata);
+    let key = DataKey::Credit(id.clone());
+    env.storage().persistent().set(&key, metadata);
+    env.storage().persistent().extend_ttl(&key, TTL_THRESHOLD, MIN_TTL);
 }
 
 pub fn get_credit(env: &Env, id: &BytesN<32>) -> Option<CreditMetadata> {
@@ -30,6 +37,7 @@ pub fn get_verifiers(env: &Env) -> Vec<Address> {
 
 pub fn set_verifiers(env: &Env, verifiers: &Vec<Address>) {
     env.storage().instance().set(&DataKey::VerifierSet, verifiers);
+    env.storage().instance().extend_ttl(TTL_THRESHOLD, MIN_TTL);
 }
 
 pub fn is_verifier(env: &Env, verifier: &Address) -> bool {
@@ -42,6 +50,7 @@ pub fn add_credit_to_project(env: &Env, project_id: &String, credit_id: &BytesN<
     let mut list: Vec<BytesN<32>> = env.storage().persistent().get(&key).unwrap_or_else(|| Vec::new(env));
     list.push_back(credit_id.clone());
     env.storage().persistent().set(&key, &list);
+    env.storage().persistent().extend_ttl(&key, TTL_THRESHOLD, MIN_TTL);
 }
 
 pub fn get_credits_by_project(env: &Env, project_id: &String) -> Vec<BytesN<32>> {

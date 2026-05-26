@@ -224,6 +224,7 @@ dependencies = [
 name = "carbonchain-marketplace"
 version = "0.1.0"
 dependencies = [
+ "carbonchain-credit-registry",
  "soroban-sdk",
 ]
 

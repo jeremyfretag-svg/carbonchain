@@ -43,6 +43,11 @@ pub enum OracleError {
 // Maximum MRV history entries retained per project (ring-buffer eviction).
 const MAX_HISTORY: u32 = 100;
 
+/// Minimum TTL in ledgers (~1 year at 5s/ledger).
+const MIN_TTL: u32 = 6_307_200;
+/// Threshold below which TTL is extended.
+const TTL_THRESHOLD: u32 = MIN_TTL / 2;
+
 // ── Contract ─────────────────────────────────────────────────────────────────
 
 #[contract]
@@ -96,6 +101,7 @@ impl MrvOracle {
         };
 
         env.storage().persistent().set(&DataKey::Latest(project_id.clone()), &point);
+        env.storage().persistent().extend_ttl(&DataKey::Latest(project_id.clone()), TTL_THRESHOLD, MIN_TTL);
 
         let hist_key = DataKey::History(project_id.clone());
         let mut history: Vec<MrvDataPoint> = env
@@ -108,6 +114,7 @@ impl MrvOracle {
         }
         history.push_back(point);
         env.storage().persistent().set(&hist_key, &history);
+        env.storage().persistent().extend_ttl(&hist_key, TTL_THRESHOLD, MIN_TTL);
 
         env.events().publish(
             (symbol_short!("mrv_upd"), oracle),

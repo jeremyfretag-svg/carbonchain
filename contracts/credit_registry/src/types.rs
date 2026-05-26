@@ -31,4 +31,5 @@ pub enum DataKey {
     Credit(BytesN<32>),
     ProjectCredits(String),
     RetirementContract,
+    CreditNonce,
 }

@@ -1,7 +1,7 @@
 #![no_std]
 pub mod types;
 
-use crate::types::{DataKey, RetirementRecord};
+use crate::types::{DataKey, RetirementRecord, MIN_TTL, TTL_THRESHOLD};
 use soroban_sdk::{
     contract, contractimpl, contracterror, symbol_short,
     Address, BytesN, Env, String, Symbol, Vec,
@@ -60,6 +60,9 @@ impl Retirement {
         env.storage()
             .persistent()
             .set(&DataKey::Retirement(retirement_id.clone()), &record);
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::Retirement(retirement_id.clone()), TTL_THRESHOLD, MIN_TTL);
 
         // Index under buyer account
         let acct_key = DataKey::AccountRetirements(buyer.clone());
@@ -70,6 +73,7 @@ impl Retirement {
             .unwrap_or_else(|| Vec::new(&env));
         list.push_back(retirement_id.clone());
         env.storage().persistent().set(&acct_key, &list);
+        env.storage().persistent().extend_ttl(&acct_key, TTL_THRESHOLD, MIN_TTL);
 
         // Cross-contract: mark the credit as retired in the registry
         let _: () = env.invoke_contract(
@@ -101,7 +105,7 @@ impl Retirement {
     }
 
     /// Returns one page of retirement IDs for `account`. `page` is 0-indexed; `page_size` capped at 50.
-    pub fn get_retirements_by_account_paginated(
+    pub fn get_retirements_paged(
         env: Env,
         account: Address,
         page: u32,

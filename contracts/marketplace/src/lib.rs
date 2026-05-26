@@ -1,6 +1,12 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, contracterror, symbol_short, Env, Address, BytesN, Symbol, Vec, IntoVal};
 
+// ── TTL constants ─────────────────────────────────────────────────────────────
+/// Minimum TTL in ledgers (~1 year at 5s/ledger).
+const MIN_TTL: u32 = 6_307_200;
+/// Threshold below which TTL is extended.
+const TTL_THRESHOLD: u32 = MIN_TTL / 2;
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, PartialEq)]
@@ -75,12 +81,14 @@ impl Marketplace {
         };
 
         env.storage().persistent().set(&DataKey::Offer(offer_id), &offer);
+        env.storage().persistent().extend_ttl(&DataKey::Offer(offer_id), TTL_THRESHOLD, MIN_TTL);
 
         // Index under seller
         let key = DataKey::SellerOffers(seller.clone());
         let mut ids: Vec<u64> = env.storage().persistent().get(&key).unwrap_or_else(|| Vec::new(&env));
         ids.push_back(offer_id);
         env.storage().persistent().set(&key, &ids);
+        env.storage().persistent().extend_ttl(&key, TTL_THRESHOLD, MIN_TTL);
 
         env.events().publish((symbol_short!("offer_new"), seller), offer_id);
         Ok(offer_id)
@@ -107,6 +115,7 @@ impl Marketplace {
 
         offer.active = false;
         env.storage().persistent().set(&DataKey::Offer(offer_id), &offer);
+        env.storage().persistent().extend_ttl(&DataKey::Offer(offer_id), TTL_THRESHOLD, MIN_TTL);
         env.events().publish((symbol_short!("offer_cxl"), seller), offer_id);
         Ok(())
     }
@@ -134,6 +143,7 @@ impl Marketplace {
     fn next_id(env: &Env) -> u64 {
         let id: u64 = env.storage().persistent().get(&DataKey::OfferCount).unwrap_or(0u64);
         env.storage().persistent().set(&DataKey::OfferCount, &(id + 1));
+        env.storage().persistent().extend_ttl(&DataKey::OfferCount, TTL_THRESHOLD, MIN_TTL);
         id
     }
 }
