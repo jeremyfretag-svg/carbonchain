@@ -30,4 +30,5 @@ pub enum DataKey {
     VerifierSet,
     Credit(BytesN<32>),
     ProjectCredits(String),
+    RetirementContract,
 }

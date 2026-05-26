@@ -32,6 +32,10 @@ impl Retirement {
     ) -> BytesN<32> {
         buyer.require_auth();
 
+        if tonnes <= 0 {
+            panic!("tonnes must be greater than zero");
+        }
+
         // Derive a deterministic retirement ID from credit_id + reason
         let mut preimage = credit_id.clone().to_xdr(&env);
         preimage.append(&reason.clone().to_xdr(&env));
@@ -96,7 +100,10 @@ mod tests {
     use soroban_sdk::{Env, String};
     use carbonchain_credit_registry::CreditRegistry;
 
-    fn setup_registry(env: &Env) -> (Address, Address, Address, BytesN<32>) {
+    /// Returns (retirement_contract_id, registry_id, credit_id)
+    fn setup(env: &Env) -> (Address, Address, BytesN<32>) {
+        // Register retirement first so its address is known for registry init
+        let retirement_id = env.register(Retirement, ());
         let registry_id = env.register(CreditRegistry, ());
         let registry_client =
             carbonchain_credit_registry::CreditRegistryClient::new(env, &registry_id);
@@ -105,7 +112,7 @@ mod tests {
         let verifier = Address::generate(env);
         let issuer = Address::generate(env);
 
-        registry_client.initialize(&admin);
+        registry_client.initialize(&admin, &retirement_id);
         registry_client.register_verifier(&admin, &verifier);
 
         let credit_id = registry_client.submit_credit(
@@ -119,7 +126,7 @@ mod tests {
         );
         registry_client.approve_and_mint(&verifier, &credit_id);
 
-        (registry_id, admin, verifier, credit_id)
+        (retirement_id, registry_id, credit_id)
     }
 
     #[test]
@@ -127,9 +134,7 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let (registry_id, _admin, _verifier, credit_id) = setup_registry(&env);
-
-        let contract_id = env.register(Retirement, ());
+        let (contract_id, registry_id, credit_id) = setup(&env);
         let client = RetirementClient::new(&env, &contract_id);
         let buyer = Address::generate(&env);
 
@@ -152,9 +157,7 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let (registry_id, _admin, _verifier, credit_id) = setup_registry(&env);
-
-        let contract_id = env.register(Retirement, ());
+        let (contract_id, registry_id, credit_id) = setup(&env);
         let client = RetirementClient::new(&env, &contract_id);
         let buyer = Address::generate(&env);
 
@@ -176,11 +179,9 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let (registry_id, _admin, _verifier, credit_id) = setup_registry(&env);
+        let (contract_id, registry_id, credit_id) = setup(&env);
         let registry_client =
             carbonchain_credit_registry::CreditRegistryClient::new(&env, &registry_id);
-
-        let contract_id = env.register(Retirement, ());
         let client = RetirementClient::new(&env, &contract_id);
         let buyer = Address::generate(&env);
 
@@ -196,6 +197,25 @@ mod tests {
         assert_eq!(
             credit.status,
             carbonchain_credit_registry::types::CreditStatus::Retired
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_retire_zero_tonnes_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (contract_id, registry_id, credit_id) = setup(&env);
+        let client = RetirementClient::new(&env, &contract_id);
+        let buyer = Address::generate(&env);
+
+        client.retire(
+            &buyer,
+            &credit_id,
+            &0,
+            &String::from_str(&env, "offset"),
+            &registry_id,
         );
     }
 }
