@@ -26,6 +26,9 @@ pub enum DataKey {
     Offer(u64),
     OfferCount,
     SellerOffers(Address),
+    Nonce(Address),
+    Admin,
+    PendingAdmin,
 }
 
 #[contracterror]
@@ -37,6 +40,10 @@ pub enum MarketplaceError {
     InvalidPrice   = 117,
     AlreadyClosed  = 118,
     CreditNotActive = 119,
+    InvalidNonce   = 120,
+    NotInitialized = 121,
+    AlreadyInitialized = 122,
+    NoPendingAdmin = 123,
 }
 
 // ── Contract ─────────────────────────────────────────────────────────────────
@@ -46,6 +53,23 @@ pub struct Marketplace;
 
 #[contractimpl]
 impl Marketplace {
+    fn read_nonce(env: &Env, addr: &Address) -> u64 {
+        env.storage().persistent().get(&DataKey::Nonce(addr.clone())).unwrap_or(0u64)
+    }
+
+    fn consume_nonce(env: &Env, addr: &Address, expected: u64) -> bool {
+        let current = Self::read_nonce(env, addr);
+        if current != expected { return false; }
+        let key = DataKey::Nonce(addr.clone());
+        env.storage().persistent().set(&key, &(current + 1));
+        env.storage().persistent().extend_ttl(&key, TTL_THRESHOLD, MIN_TTL);
+        true
+    }
+
+    pub fn nonce(env: Env, address: Address) -> u64 {
+        Self::read_nonce(&env, &address)
+    }
+
     /// List a credit for sale. Returns the new offer ID.
     pub fn create_offer(
         env: Env,
@@ -54,8 +78,12 @@ impl Marketplace {
         price_xlm: i128,
         tonnes: i128,
         registry_id: Address,
+        nonce: u64,
     ) -> Result<u64, MarketplaceError> {
         seller.require_auth();
+        if !Self::consume_nonce(&env, &seller, nonce) {
+            return Err(MarketplaceError::InvalidNonce);
+        }
         if price_xlm <= 0 || tonnes <= 0 {
             return Err(MarketplaceError::InvalidPrice);
         }
@@ -95,11 +123,11 @@ impl Marketplace {
     }
 
     /// Cancel an open offer. Only the original seller may cancel.
-    ///
-    /// Emits an `offer_cxl` event **only** on success. Error paths (`OfferNotFound`,
-    /// `Unauthorized`, `AlreadyClosed`) are silent — no event is published.
-    pub fn cancel_offer(env: Env, seller: Address, offer_id: u64) -> Result<(), MarketplaceError> {
+    pub fn cancel_offer(env: Env, seller: Address, offer_id: u64, nonce: u64) -> Result<(), MarketplaceError> {
         seller.require_auth();
+        if !Self::consume_nonce(&env, &seller, nonce) {
+            return Err(MarketplaceError::InvalidNonce);
+        }
         let mut offer: Offer = env
             .storage()
             .persistent()
@@ -162,9 +190,12 @@ mod tests {
         let admin = Address::generate(env);
         let verifier = Address::generate(env);
         let issuer = Address::generate(env);
-        registry_client.initialize(&admin);
-        registry_client.register_verifier(&admin, &verifier);
+        let retirement = Address::generate(env);
+        registry_client.initialize(&admin, &retirement);
+        let nonce = registry_client.nonce(&admin);
+        registry_client.register_verifier(&admin, &verifier, &nonce);
 
+        let inonce = registry_client.nonce(&issuer);
         let credit_id = registry_client.submit_credit(
             &issuer,
             &String::from_str(env, "PROJ-001"),
@@ -173,8 +204,10 @@ mod tests {
             &String::from_str(env, "NG"),
             &1_000_000,
             &String::from_str(env, "bafybei123"),
+            &inonce,
         );
-        registry_client.approve_and_mint(&verifier, &credit_id);
+        let vnonce = registry_client.nonce(&verifier);
+        registry_client.approve_and_mint(&verifier, &credit_id, &vnonce);
 
         let marketplace_id = env.register(Marketplace, ());
         let client = MarketplaceClient::new(env, &marketplace_id);
@@ -187,7 +220,8 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let (client, seller, registry_id, credit_id) = setup_with_registry(&env);
-        let offer_id = client.create_offer(&seller, &credit_id, &10_000_000, &500_000, &registry_id);
+        let nonce = client.nonce(&seller);
+        let offer_id = client.create_offer(&seller, &credit_id, &10_000_000, &500_000, &registry_id, &nonce);
         assert_eq!(offer_id, 0);
         let offer = client.get_offer(&offer_id);
         assert!(offer.active);
@@ -199,20 +233,25 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let (client, seller, registry_id, credit_id) = setup_with_registry(&env);
-        let offer_id = client.create_offer(&seller, &credit_id, &10_000_000, &500_000, &registry_id);
-        client.cancel_offer(&seller, &offer_id);
+        let nonce = client.nonce(&seller);
+        let offer_id = client.create_offer(&seller, &credit_id, &10_000_000, &500_000, &registry_id, &nonce);
+        let nonce2 = client.nonce(&seller);
+        client.cancel_offer(&seller, &offer_id, &nonce2);
         assert!(!client.get_offer(&offer_id).active);
     }
 
     #[test]
     fn test_cancel_already_closed_emits_no_event() {
-        let (env, client, seller, credit_id) = setup();
-        let offer_id = client.create_offer(&seller, &credit_id, &10_000_000, &500_000);
-        client.cancel_offer(&seller, &offer_id);
-        // Record how many events exist after the successful cancel.
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, seller, registry_id, credit_id) = setup_with_registry(&env);
+        let nonce = client.nonce(&seller);
+        let offer_id = client.create_offer(&seller, &credit_id, &10_000_000, &500_000, &registry_id, &nonce);
+        let nonce2 = client.nonce(&seller);
+        client.cancel_offer(&seller, &offer_id, &nonce2);
         let count_before = env.events().all().len();
-        // The error path must not publish any additional event.
-        let _ = client.try_cancel_offer(&seller, &offer_id);
+        let nonce3 = client.nonce(&seller);
+        let _ = client.try_cancel_offer(&seller, &offer_id, &nonce3);
         assert_eq!(env.events().all().len(), count_before);
     }
 
@@ -221,9 +260,12 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let (client, seller, registry_id, credit_id) = setup_with_registry(&env);
-        let offer_id = client.create_offer(&seller, &credit_id, &10_000_000, &500_000, &registry_id);
-        client.cancel_offer(&seller, &offer_id);
-        assert!(client.try_cancel_offer(&seller, &offer_id).is_err());
+        let nonce = client.nonce(&seller);
+        let offer_id = client.create_offer(&seller, &credit_id, &10_000_000, &500_000, &registry_id, &nonce);
+        let nonce2 = client.nonce(&seller);
+        client.cancel_offer(&seller, &offer_id, &nonce2);
+        let nonce3 = client.nonce(&seller);
+        assert!(client.try_cancel_offer(&seller, &offer_id, &nonce3).is_err());
     }
 
     #[test]
@@ -231,7 +273,8 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let (client, seller, registry_id, credit_id) = setup_with_registry(&env);
-        assert!(client.try_create_offer(&seller, &credit_id, &0, &500_000, &registry_id).is_err());
+        let nonce = client.nonce(&seller);
+        assert!(client.try_create_offer(&seller, &credit_id, &0, &500_000, &registry_id, &nonce).is_err());
     }
 
     #[test]
@@ -239,8 +282,10 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let (client, seller, registry_id, credit_id) = setup_with_registry(&env);
-        client.create_offer(&seller, &credit_id, &10_000_000, &500_000, &registry_id);
-        client.create_offer(&seller, &credit_id, &20_000_000, &250_000, &registry_id);
+        let nonce = client.nonce(&seller);
+        client.create_offer(&seller, &credit_id, &10_000_000, &500_000, &registry_id, &nonce);
+        let nonce2 = client.nonce(&seller);
+        client.create_offer(&seller, &credit_id, &20_000_000, &250_000, &registry_id, &nonce2);
         assert_eq!(client.get_offers_by_seller(&seller).len(), 2);
     }
 
@@ -249,8 +294,10 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let (client, seller, registry_id, credit_id) = setup_with_registry(&env);
-        client.create_offer(&seller, &credit_id, &10_000_000, &500_000, &registry_id);
-        client.create_offer(&seller, &credit_id, &20_000_000, &250_000, &registry_id);
+        let nonce = client.nonce(&seller);
+        client.create_offer(&seller, &credit_id, &10_000_000, &500_000, &registry_id, &nonce);
+        let nonce2 = client.nonce(&seller);
+        client.create_offer(&seller, &credit_id, &20_000_000, &250_000, &registry_id, &nonce2);
         assert_eq!(client.offer_count(), 2);
     }
 
@@ -259,34 +306,34 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let (client, seller, registry_id, credit_id) = setup_with_registry(&env);
-        let offer_id = client.create_offer(&seller, &credit_id, &10_000_000, &500_000, &registry_id);
+        let nonce = client.nonce(&seller);
+        let offer_id = client.create_offer(&seller, &credit_id, &10_000_000, &500_000, &registry_id, &nonce);
         let other = Address::generate(&env);
-        assert!(client.try_cancel_offer(&other, &offer_id).is_err());
+        let ononce = client.nonce(&other);
+        assert!(client.try_cancel_offer(&other, &offer_id, &ononce).is_err());
     }
 
     #[test]
     fn test_offer_count_survives_contract_reinstantiation() {
-        // Simulates an upgrade: the same contract address is re-registered (instance storage
-        // is wiped) but persistent storage survives. OfferCount must still be correct.
         let env = Env::default();
         env.mock_all_auths();
         let contract_id = env.register(Marketplace, ());
         let client = MarketplaceClient::new(&env, &contract_id);
         let seller = Address::generate(&env);
         let credit_id = BytesN::from_array(&env, &[1u8; 32]);
+        let registry_id = Address::generate(&env);
 
-        client.create_offer(&seller, &credit_id, &10_000_000, &500_000);
-        client.create_offer(&seller, &credit_id, &20_000_000, &250_000);
+        let nonce = client.nonce(&seller);
+        client.create_offer(&seller, &credit_id, &10_000_000, &500_000, &registry_id, &nonce);
+        let nonce2 = client.nonce(&seller);
+        client.create_offer(&seller, &credit_id, &20_000_000, &250_000, &registry_id, &nonce2);
         assert_eq!(client.offer_count(), 2);
 
-        // Re-register the same contract (simulates upgrade wiping instance storage)
         env.register_at(&contract_id, Marketplace, ());
-
-        // Persistent storage survives — count must still be 2
         assert_eq!(client.offer_count(), 2);
 
-        // Next offer ID must not collide with existing ones
-        let new_offer_id = client.create_offer(&seller, &credit_id, &5_000_000, &100_000);
+        let nonce3 = client.nonce(&seller);
+        let new_offer_id = client.create_offer(&seller, &credit_id, &5_000_000, &100_000, &registry_id, &nonce3);
         assert_eq!(new_offer_id, 2);
     }
 }

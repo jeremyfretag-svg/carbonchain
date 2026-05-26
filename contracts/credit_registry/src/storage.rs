@@ -67,3 +67,21 @@ pub fn set_retirement_contract(env: &Env, addr: &Address) {
 pub fn get_retirement_contract(env: &Env) -> Option<Address> {
     env.storage().instance().get(&DataKey::RetirementContract)
 }
+
+pub fn get_nonce(env: &Env, addr: &Address) -> u64 {
+    env.storage()
+        .persistent()
+        .get(&DataKey::Nonce(addr.clone()))
+        .unwrap_or(0u64)
+}
+
+pub fn consume_nonce(env: &Env, addr: &Address, expected: u64) -> bool {
+    let current = get_nonce(env, addr);
+    if current != expected {
+        return false;
+    }
+    let key = DataKey::Nonce(addr.clone());
+    env.storage().persistent().set(&key, &(current + 1));
+    env.storage().persistent().extend_ttl(&key, TTL_THRESHOLD, MIN_TTL);
+    true
+}
