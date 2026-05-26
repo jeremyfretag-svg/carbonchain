@@ -50,6 +50,7 @@ impl MrvOracle {
             return Err(OracleError::Unauthorized);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.events().publish((symbol_short!("mrv_init"),), admin);
         Ok(())
     }
 
@@ -173,6 +174,24 @@ mod tests {
         client.initialize(&admin);
         client.register_oracle(&admin, &oracle);
         (env, client, admin, oracle)
+    }
+
+    #[test]
+    fn test_initialize_emits_event() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let id = env.register(MrvOracle, ());
+        let client = MrvOracleClient::new(&env, &id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+        let events = env.events().all();
+        // Exactly one event must be emitted: the mrv_init event.
+        assert_eq!(events.len(), 1);
+        let (_, topics, _data): (_, soroban_sdk::Vec<soroban_sdk::Val>, soroban_sdk::Val) =
+            events.get(0).unwrap();
+        // First topic is the symbol "mrv_init".
+        let expected: soroban_sdk::Val = symbol_short!("mrv_init").into();
+        assert_eq!(topics.get(0).unwrap(), expected);
     }
 
     #[test]

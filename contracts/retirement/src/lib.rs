@@ -32,9 +32,11 @@ impl Retirement {
     ) -> BytesN<32> {
         buyer.require_auth();
 
-        // Derive a deterministic retirement ID from credit_id + reason
+        // Include the ledger timestamp so the same credit+reason pair on different
+        // ledgers produces distinct retirement IDs.
         let mut preimage = credit_id.clone().to_xdr(&env);
         preimage.append(&reason.clone().to_xdr(&env));
+        preimage.append(&env.ledger().timestamp().to_xdr(&env));
         let retirement_id: BytesN<32> = env.crypto().sha256(&preimage).into();
 
         let record = RetirementRecord {
@@ -120,6 +122,27 @@ mod tests {
         registry_client.approve_and_mint(&verifier, &credit_id);
 
         (registry_id, admin, verifier, credit_id)
+    }
+
+    #[test]
+    fn test_duplicate_retirement_same_reason_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (registry_id, _admin, _verifier, credit_id) = setup_registry(&env);
+
+        let contract_id = env.register(Retirement, ());
+        let client = RetirementClient::new(&env, &contract_id);
+        let buyer = Address::generate(&env);
+        let reason = String::from_str(&env, "2024 Scope 3 offset");
+
+        // First retirement succeeds.
+        client.retire(&buyer, &credit_id, &1_000_000, &reason, &registry_id);
+
+        // Second retirement with the same credit must fail because the registry
+        // rejects mark_retired on an already-retired credit.
+        let result = client.try_retire(&buyer, &credit_id, &1_000_000, &reason, &registry_id);
+        assert!(result.is_err());
     }
 
     #[test]

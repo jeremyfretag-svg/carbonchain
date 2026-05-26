@@ -75,6 +75,9 @@ impl Marketplace {
     }
 
     /// Cancel an open offer. Only the original seller may cancel.
+    ///
+    /// Emits an `offer_cxl` event **only** on success. Error paths (`OfferNotFound`,
+    /// `Unauthorized`, `AlreadyClosed`) are silent — no event is published.
     pub fn cancel_offer(env: Env, seller: Address, offer_id: u64) -> Result<(), MarketplaceError> {
         seller.require_auth();
         let mut offer: Offer = env
@@ -155,6 +158,18 @@ mod tests {
         let offer_id = client.create_offer(&seller, &credit_id, &10_000_000, &500_000);
         client.cancel_offer(&seller, &offer_id);
         assert!(!client.get_offer(&offer_id).active);
+    }
+
+    #[test]
+    fn test_cancel_already_closed_emits_no_event() {
+        let (env, client, seller, credit_id) = setup();
+        let offer_id = client.create_offer(&seller, &credit_id, &10_000_000, &500_000);
+        client.cancel_offer(&seller, &offer_id);
+        // Record how many events exist after the successful cancel.
+        let count_before = env.events().all().len();
+        // The error path must not publish any additional event.
+        let _ = client.try_cancel_offer(&seller, &offer_id);
+        assert_eq!(env.events().all().len(), count_before);
     }
 
     #[test]

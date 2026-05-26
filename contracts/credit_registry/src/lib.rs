@@ -95,7 +95,12 @@ impl CreditRegistry {
             return Err(CarbonChainError::InvalidMetadata);
         }
 
-        let id: BytesN<32> = env.crypto().sha256(&project_id.clone().to_xdr(&env)).into();
+        // Include a per-contract nonce so two credits for the same project get distinct IDs.
+        let nonce: u64 = env.storage().instance().get(&crate::types::DataKey::CreditNonce).unwrap_or(0u64);
+        env.storage().instance().set(&crate::types::DataKey::CreditNonce, &(nonce + 1));
+        let mut preimage = project_id.clone().to_xdr(&env);
+        preimage.append(&nonce.to_xdr(&env));
+        let id: BytesN<32> = env.crypto().sha256(&preimage).into();
         let metadata = CreditMetadata {
             project_id: project_id.clone(),
             issuer: issuer.clone(),
@@ -281,6 +286,18 @@ mod tests {
         client.approve_and_mint(&verifier, &id);
         client.mark_retired(&id);
         assert_eq!(client.get_credit(&id).status, CreditStatus::Retired);
+    }
+
+    #[test]
+    fn test_two_credits_same_project_have_distinct_ids() {
+        let (env, client, _, _) = setup();
+        let issuer = Address::generate(&env);
+        let id1 = submit_test_credit(&env, &client, &issuer);
+        let id2 = submit_test_credit(&env, &client, &issuer);
+        assert_ne!(id1, id2);
+        // Both records must be independently retrievable.
+        assert!(client.try_get_credit(&id1).is_ok());
+        assert!(client.try_get_credit(&id2).is_ok());
     }
 
     #[test]
