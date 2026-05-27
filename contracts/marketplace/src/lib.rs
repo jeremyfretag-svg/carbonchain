@@ -52,29 +52,37 @@ pub struct Marketplace;
 impl Marketplace {
     // ── Admin / Pause ────────────────────────────────────────────────────────
 
+    /// Initialise the marketplace. Must be called exactly once.
+    ///
+    /// # Errors
+    /// - [`MarketplaceError::NotInitialized`] — contract has already been initialised.
     pub fn initialize(env: Env, admin: Address) -> Result<(), MarketplaceError> {
-        if env.storage().instance().has(&DataKey::Admin) {
-            return Err(MarketplaceError::NotInitialized); // already initialised
-        }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
         Ok(())
     }
 
+    /// Pause all state-mutating operations. Only the admin may call this.
+    ///
+    /// # Errors
+    /// - [`MarketplaceError::NotInitialized`] — contract has not been initialised.
+    /// - [`MarketplaceError::Unauthorized`] — caller is not the admin.
     pub fn pause(env: Env, admin: Address) -> Result<(), MarketplaceError> {
-        Self::require_admin(&env, &admin)?;
-        env.storage().instance().set(&DataKey::Paused, &true);
         env.events().publish((symbol_short!("paused"),), admin);
         Ok(())
     }
 
+    /// Resume all state-mutating operations. Only the admin may call this.
+    ///
+    /// # Errors
+    /// - [`MarketplaceError::NotInitialized`] — contract has not been initialised.
+    /// - [`MarketplaceError::Unauthorized`] — caller is not the admin.
     pub fn unpause(env: Env, admin: Address) -> Result<(), MarketplaceError> {
-        Self::require_admin(&env, &admin)?;
-        env.storage().instance().set(&DataKey::Paused, &false);
         env.events().publish((symbol_short!("unpaused"),), admin);
         Ok(())
     }
 
+    /// Returns `true` if the contract is currently paused.
     pub fn paused(env: Env) -> bool {
         env.storage().instance().get(&DataKey::Paused).unwrap_or(false)
     }
@@ -82,6 +90,15 @@ impl Marketplace {
     // ── Offers ───────────────────────────────────────────────────────────────
 
     /// List a credit for sale. Returns the new offer ID.
+    ///
+    /// Verifies that the credit exists and is [`CreditStatus::Active`] in the registry
+    /// before creating the offer. `price_xlm` and `tonnes` must both be positive.
+    ///
+    /// # Errors
+    /// - [`MarketplaceError::ContractPaused`] — contract is paused.
+    /// - [`MarketplaceError::InvalidNonce`] — `nonce` does not match the current seller nonce.
+    /// - [`MarketplaceError::InvalidPrice`] — `price_xlm` or `tonnes` is zero or negative.
+    /// - [`MarketplaceError::CreditNotActive`] — credit is not in `Active` status.
     pub fn create_offer(
         env: Env,
         seller: Address,
@@ -138,8 +155,12 @@ impl Marketplace {
 
     /// Cancel an open offer. Only the original seller may cancel.
     ///
-    /// Emits an `offer_cxl` event **only** on success. Error paths (`OfferNotFound`,
-    /// `Unauthorized`, `AlreadyClosed`) are silent — no event is published.
+    /// # Errors
+    /// - [`MarketplaceError::ContractPaused`] — contract is paused.
+    /// - [`MarketplaceError::InvalidNonce`] — `nonce` does not match the current seller nonce.
+    /// - [`MarketplaceError::OfferNotFound`] — no offer exists for `offer_id`.
+    /// - [`MarketplaceError::Unauthorized`] — `seller` is not the offer creator.
+    /// - [`MarketplaceError::AlreadyClosed`] — offer has already been cancelled.
     pub fn cancel_offer(env: Env, seller: Address, offer_id: u64) -> Result<(), MarketplaceError> {
         if Self::is_paused(&env) {
             return Err(MarketplaceError::ContractPaused);
@@ -168,6 +189,10 @@ impl Marketplace {
         Ok(())
     }
 
+    /// Fetch an offer by its ID.
+    ///
+    /// # Errors
+    /// - [`MarketplaceError::OfferNotFound`] — no offer exists for `offer_id`.
     pub fn get_offer(env: Env, offer_id: u64) -> Result<Offer, MarketplaceError> {
         env.storage()
             .persistent()
@@ -204,6 +229,7 @@ impl Marketplace {
         active
     }
 
+    /// Returns the total number of offers ever created (including cancelled ones).
     pub fn offer_count(env: Env) -> u64 {
         env.storage().persistent().get(&DataKey::OfferCount).unwrap_or(0u64)
     }

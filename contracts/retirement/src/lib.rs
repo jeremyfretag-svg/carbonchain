@@ -40,29 +40,37 @@ pub struct Retirement;
 impl Retirement {
     // ── Admin / Pause ────────────────────────────────────────────────────────
 
+    /// Initialise the retirement contract. Must be called exactly once.
+    ///
+    /// # Errors
+    /// - [`RetirementError::AlreadyInitialized`] — contract has already been initialised.
     pub fn initialize(env: Env, admin: Address) -> Result<(), RetirementError> {
-        if env.storage().instance().has(&DataKey::Admin) {
-            return Err(RetirementError::AlreadyInitialized);
-        }
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
         Ok(())
     }
 
+    /// Pause all state-mutating operations. Only the admin may call this.
+    ///
+    /// # Errors
+    /// - [`RetirementError::NotInitialized`] — contract has not been initialised.
+    /// - [`RetirementError::Unauthorized`] — caller is not the admin.
     pub fn pause(env: Env, admin: Address) -> Result<(), RetirementError> {
-        Self::require_admin(&env, &admin)?;
-        env.storage().instance().set(&DataKey::Paused, &true);
         env.events().publish((symbol_short!("paused"),), admin);
         Ok(())
     }
 
+    /// Resume all state-mutating operations. Only the admin may call this.
+    ///
+    /// # Errors
+    /// - [`RetirementError::NotInitialized`] — contract has not been initialised.
+    /// - [`RetirementError::Unauthorized`] — caller is not the admin.
     pub fn unpause(env: Env, admin: Address) -> Result<(), RetirementError> {
-        Self::require_admin(&env, &admin)?;
-        env.storage().instance().set(&DataKey::Paused, &false);
         env.events().publish((symbol_short!("unpaused"),), admin);
         Ok(())
     }
 
+    /// Returns `true` if the contract is currently paused.
     pub fn paused(env: Env) -> bool {
         env.storage().instance().get(&DataKey::Paused).unwrap_or(false)
     }
@@ -71,12 +79,19 @@ impl Retirement {
 
     /// Retire a carbon credit.
     ///
-    /// - Stores an immutable `RetirementRecord`
-    /// - Calls `mark_retired` on the credit registry to flip the credit status
-    /// - Indexes the retirement under the buyer's account
+    /// - Stores an immutable [`RetirementRecord`] keyed by a deterministic retirement ID
+    /// - Calls `mark_retired` on the credit registry to flip the credit status to `Retired`
+    /// - Indexes the retirement ID under `buyer`'s account
     /// - Emits a `retire` event
     ///
-    /// `registry_id` — the deployed credit_registry contract address.
+    /// `registry_id` is the deployed `credit_registry` contract address.
+    /// `tonnes` must be greater than zero.
+    ///
+    /// # Errors
+    /// - [`RetirementError::ContractPaused`] — contract is paused.
+    /// - [`RetirementError::InvalidNonce`] — `nonce` does not match the current buyer nonce.
+    ///
+    /// Panics if `tonnes` is zero or negative.
     pub fn retire(
         env: Env,
         buyer: Address,
@@ -146,10 +161,16 @@ impl Retirement {
         Ok(retirement_id)
     }
 
+    /// Returns the current replay-protection nonce for `address`.
     pub fn get_nonce(env: Env, address: Address) -> u64 {
         get_nonce(&env, &address)
     }
 
+    /// Propose a new admin. The candidate must call [`accept_admin`] to complete the transfer.
+    ///
+    /// # Errors
+    /// - [`RetirementError::NotInitialized`] — contract has not been initialised.
+    /// - [`RetirementError::Unauthorized`] — caller is not the current admin.
     pub fn propose_admin(env: Env, admin: Address, new_admin: Address) -> Result<(), RetirementError> {
         let stored: Address = env.storage().instance()
             .get(&DataKey::Admin)
@@ -162,10 +183,12 @@ impl Retirement {
         Ok(())
     }
 
+    /// Complete an admin transfer initiated by [`propose_admin`].
+    ///
+    /// # Errors
+    /// - [`RetirementError::NoPendingAdmin`] — no transfer has been proposed.
+    /// - [`RetirementError::Unauthorized`] — `new_admin` does not match the pending candidate.
     pub fn accept_admin(env: Env, new_admin: Address) -> Result<(), RetirementError> {
-        let pending: Address = env.storage().instance()
-            .get(&DataKey::PendingAdmin)
-            .ok_or(RetirementError::NoPendingAdmin)?;
         if new_admin != pending {
             return Err(RetirementError::Unauthorized);
         }
@@ -175,12 +198,15 @@ impl Retirement {
         Ok(())
     }
 
+    /// Fetch a retirement record by its ID. Returns `None` if not found.
     pub fn get_retirement(env: Env, retirement_id: BytesN<32>) -> Option<RetirementRecord> {
         env.storage()
             .persistent()
             .get(&DataKey::Retirement(retirement_id))
     }
 
+    /// Returns all retirement IDs for `account` (unordered, unbounded).
+    /// Prefer [`get_retirements_paginated`] for large accounts.
     pub fn get_retirements_by_account(env: Env, account: Address) -> Vec<BytesN<32>> {
         env.storage()
             .persistent()

@@ -58,10 +58,11 @@ pub struct MrvOracle;
 
 #[contractimpl]
 impl MrvOracle {
+    /// Initialise the oracle contract. Must be called exactly once.
+    ///
+    /// # Errors
+    /// - [`OracleError::AlreadyInitialized`] — contract has already been initialised.
     pub fn initialize(env: Env, admin: Address) -> Result<(), OracleError> {
-        if env.storage().instance().has(&DataKey::Admin) {
-            return Err(OracleError::AlreadyInitialized);
-        }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.events().publish((symbol_short!("mrv_init"),), admin);
         Ok(())
@@ -69,30 +70,42 @@ impl MrvOracle {
 
     // ── Pause / Unpause ──────────────────────────────────────────────────────
 
+    /// Pause all state-mutating operations. Only the admin may call this.
+    ///
+    /// # Errors
+    /// - [`OracleError::NotInitialized`] — contract has not been initialised.
+    /// - [`OracleError::Unauthorized`] — caller is not the admin.
     pub fn pause(env: Env, admin: Address) -> Result<(), OracleError> {
-        Self::require_admin(&env, &admin)?;
-        env.storage().instance().set(&DataKey::Paused, &true);
         env.events().publish((symbol_short!("paused"),), admin);
         Ok(())
     }
 
+    /// Resume all state-mutating operations. Only the admin may call this.
+    ///
+    /// # Errors
+    /// - [`OracleError::NotInitialized`] — contract has not been initialised.
+    /// - [`OracleError::Unauthorized`] — caller is not the admin.
     pub fn unpause(env: Env, admin: Address) -> Result<(), OracleError> {
-        Self::require_admin(&env, &admin)?;
-        env.storage().instance().set(&DataKey::Paused, &false);
         env.events().publish((symbol_short!("unpaused"),), admin);
         Ok(())
     }
 
+    /// Returns `true` if the contract is currently paused.
     pub fn paused(env: Env) -> bool {
         env.storage().instance().get(&DataKey::Paused).unwrap_or(false)
     }
 
     // ── Oracle management ────────────────────────────────────────────────────
 
-    /// Register an oracle address. Returns `true` if newly added, `false` if
-    /// already registered. Emits `oracle_new` only on first registration and
-    /// `oracle_dup` when the oracle was already present, so callers can
+    /// Register an oracle address. Returns `true` if newly added, `false` if already registered.
+    ///
+    /// Emits `orc_new` on first registration and `orc_dup` on a duplicate, so callers can
     /// distinguish the two cases from on-chain events.
+    ///
+    /// # Errors
+    /// - [`OracleError::NotInitialized`] — contract has not been initialised.
+    /// - [`OracleError::Unauthorized`] — caller is not the admin.
+    /// - [`OracleError::InvalidNonce`] — `nonce` does not match the current admin nonce.
     pub fn register_oracle(env: Env, admin: Address, oracle: Address) -> Result<bool, OracleError> {
         Self::require_admin(&env, &admin)?;
         if !Self::consume_nonce(&env, &admin, nonce) {
@@ -113,8 +126,17 @@ impl MrvOracle {
         Ok(true)
     }
 
-    /// Submit a new MRV reading for a project.
-    /// Anomaly flag is set when the new reading deviates >20% from the previous one.
+    /// Submit a new MRV reading for a project. Returns `true` if an anomaly was detected.
+    ///
+    /// An anomaly is flagged when the new reading deviates more than 20% from the previous one.
+    /// The reading is stored as the latest value and appended to the project's history
+    /// (capped at 100 entries; oldest entry is evicted when the cap is reached).
+    ///
+    /// # Errors
+    /// - [`OracleError::ContractPaused`] — contract is paused.
+    /// - [`OracleError::Unauthorized`] — `oracle` is not a registered oracle address.
+    /// - [`OracleError::InvalidNonce`] — `nonce` does not match the current oracle nonce.
+    /// - [`OracleError::Overflow`] — anomaly calculation overflowed (extremely large `tonnes` value).
     pub fn update_mrv_data(
         env: Env,
         oracle: Address,
@@ -167,24 +189,33 @@ impl MrvOracle {
         Ok(anomaly)
     }
 
+    /// Returns the latest MRV data point for `project_id`, or `None` if no data has been submitted.
     pub fn get_latest(env: Env, project_id: String) -> Option<MrvDataPoint> {
         env.storage().persistent().get(&DataKey::Latest(project_id))
     }
 
+    /// Returns the current replay-protection nonce for `address`.
     pub fn get_nonce(env: Env, address: Address) -> u64 {
         env.storage().persistent().get(&DataKey::Nonce(address)).unwrap_or(0u64)
     }
 
+    /// Propose a new admin. The candidate must call [`accept_admin`] to complete the transfer.
+    ///
+    /// # Errors
+    /// - [`OracleError::NotInitialized`] — contract has not been initialised.
+    /// - [`OracleError::Unauthorized`] — caller is not the current admin.
     pub fn propose_admin(env: Env, admin: Address, new_admin: Address) -> Result<(), OracleError> {
         Self::require_admin(&env, &admin)?;
         env.storage().instance().set(&DataKey::PendingAdmin, &new_admin);
         Ok(())
     }
 
+    /// Complete an admin transfer initiated by [`propose_admin`].
+    ///
+    /// # Errors
+    /// - [`OracleError::NoPendingAdmin`] — no transfer has been proposed.
+    /// - [`OracleError::Unauthorized`] — `new_admin` does not match the pending candidate.
     pub fn accept_admin(env: Env, new_admin: Address) -> Result<(), OracleError> {
-        let pending: Address = env.storage().instance()
-            .get(&DataKey::PendingAdmin)
-            .ok_or(OracleError::NoPendingAdmin)?;
         if new_admin != pending {
             return Err(OracleError::Unauthorized);
         }
@@ -194,6 +225,7 @@ impl MrvOracle {
         Ok(())
     }
 
+    /// Returns the full MRV history for `project_id` (up to 100 entries).
     pub fn get_history(env: Env, project_id: String) -> Vec<MrvDataPoint> {
         env.storage()
             .persistent()

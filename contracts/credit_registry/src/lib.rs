@@ -31,6 +31,10 @@ pub struct CreditRegistry;
 impl CreditRegistry {
     // ── Admin ────────────────────────────────────────────────────────────────
 
+    /// Initialise the registry. Must be called exactly once.
+    ///
+    /// # Errors
+    /// - [`CarbonChainError::AlreadyInitialized`] — contract has already been initialised.
     pub fn initialize(env: Env, admin: Address, retirement_contract: Address) -> Result<(), CarbonChainError> {
         if has_admin(&env) {
             return Err(CarbonChainError::AlreadyInitialized);
@@ -45,6 +49,11 @@ impl CreditRegistry {
 
     // ── Pause / Unpause ──────────────────────────────────────────────────────
 
+    /// Pause all state-mutating operations. Only the admin may call this.
+    ///
+    /// # Errors
+    /// - [`CarbonChainError::NotInitialized`] — contract has not been initialised.
+    /// - [`CarbonChainError::Unauthorized`] — caller is not the admin.
     pub fn pause(env: Env, admin: Address) -> Result<(), CarbonChainError> {
         let stored_admin = get_admin(&env).ok_or(CarbonChainError::NotInitialized)?;
         admin.require_auth();
@@ -56,6 +65,11 @@ impl CreditRegistry {
         Ok(())
     }
 
+    /// Resume all state-mutating operations. Only the admin may call this.
+    ///
+    /// # Errors
+    /// - [`CarbonChainError::NotInitialized`] — contract has not been initialised.
+    /// - [`CarbonChainError::Unauthorized`] — caller is not the admin.
     pub fn unpause(env: Env, admin: Address) -> Result<(), CarbonChainError> {
         let stored_admin = get_admin(&env).ok_or(CarbonChainError::NotInitialized)?;
         admin.require_auth();
@@ -67,12 +81,20 @@ impl CreditRegistry {
         Ok(())
     }
 
+    /// Returns `true` if the contract is currently paused.
     pub fn paused(env: Env) -> bool {
         is_paused(&env)
     }
 
     // ── Verifier management ──────────────────────────────────────────────────
 
+    /// Add a verifier to the authorised set. Requires a valid admin nonce for replay protection.
+    ///
+    /// # Errors
+    /// - [`CarbonChainError::NotInitialized`] — contract has not been initialised.
+    /// - [`CarbonChainError::Unauthorized`] — caller is not the admin.
+    /// - [`CarbonChainError::InvalidNonce`] — `nonce` does not match the current admin nonce.
+    /// - [`CarbonChainError::VerifierAlreadyExists`] — `verifier` is already registered.
     pub fn register_verifier(env: Env, admin: Address, verifier: Address, nonce: u64) -> Result<(), CarbonChainError> {
         let stored_admin = get_admin(&env).ok_or(CarbonChainError::NotInitialized)?;
         admin.require_auth();
@@ -92,6 +114,13 @@ impl CreditRegistry {
         Ok(())
     }
 
+    /// Remove a verifier from the authorised set. Requires a valid admin nonce.
+    ///
+    /// # Errors
+    /// - [`CarbonChainError::NotInitialized`] — contract has not been initialised.
+    /// - [`CarbonChainError::Unauthorized`] — caller is not the admin.
+    /// - [`CarbonChainError::InvalidNonce`] — `nonce` does not match the current admin nonce.
+    /// - [`CarbonChainError::VerifierNotFound`] — `verifier` is not in the registered set.
     pub fn remove_verifier(env: Env, admin: Address, verifier: Address, nonce: u64) -> Result<(), CarbonChainError> {
         let stored_admin = get_admin(&env).ok_or(CarbonChainError::NotInitialized)?;
         admin.require_auth();
@@ -146,6 +175,19 @@ impl CreditRegistry {
 
     // ── Credit lifecycle ─────────────────────────────────────────────────────
 
+    /// Submit a new carbon credit for verifier approval.
+    ///
+    /// Stores the credit with [`CreditStatus::Pending`] and returns its deterministic ID
+    /// (SHA-256 of `project_id || internal_nonce`). The credit cannot be traded or retired
+    /// until a registered verifier calls [`approve_and_mint`].
+    ///
+    /// `tonnes` is expressed in kg units (1 tonne = 1 000 000). Valid range: `1..=1_000_000_000_000_000`.
+    ///
+    /// # Errors
+    /// - [`CarbonChainError::NotInitialized`] — contract has not been initialised.
+    /// - [`CarbonChainError::ContractPaused`] — contract is paused.
+    /// - [`CarbonChainError::InvalidNonce`] — `nonce` does not match the current issuer nonce.
+    /// - [`CarbonChainError::InvalidTonnes`] — `tonnes` is zero, negative, or exceeds the upper bound.
     pub fn submit_credit(
         env: Env,
         issuer: Address,
@@ -200,6 +242,17 @@ impl CreditRegistry {
         Ok(id)
     }
 
+    /// Approve a pending credit and transition it to [`CreditStatus::Active`].
+    ///
+    /// Only a registered verifier may call this. The credit must currently be in
+    /// [`CreditStatus::Pending`]; calling on an already-active or retired credit is an error.
+    ///
+    /// # Errors
+    /// - [`CarbonChainError::ContractPaused`] — contract is paused.
+    /// - [`CarbonChainError::Unauthorized`] — `verifier` is not in the registered verifier set.
+    /// - [`CarbonChainError::InvalidNonce`] — `nonce` does not match the current verifier nonce.
+    /// - [`CarbonChainError::CreditNotFound`] — no credit exists for `credit_id`.
+    /// - [`CarbonChainError::InvalidStatusTransition`] — credit is not in `Pending` status.
     pub fn approve_and_mint(env: Env, verifier: Address, credit_id: BytesN<32>) -> Result<(), CarbonChainError> {
         if is_paused(&env) {
             return Err(CarbonChainError::ContractPaused);
@@ -221,6 +274,17 @@ impl CreditRegistry {
         Ok(())
     }
 
+    /// Flag a credit for re-review, transitioning it to [`CreditStatus::Flagged`].
+    ///
+    /// Only a registered verifier may flag a credit. Credits that are already
+    /// [`CreditStatus::Retired`] or [`CreditStatus::Flagged`] cannot be flagged again.
+    ///
+    /// # Errors
+    /// - [`CarbonChainError::ContractPaused`] — contract is paused.
+    /// - [`CarbonChainError::Unauthorized`] — `verifier` is not in the registered verifier set.
+    /// - [`CarbonChainError::InvalidNonce`] — `nonce` does not match the current verifier nonce.
+    /// - [`CarbonChainError::CreditNotFound`] — no credit exists for `credit_id`.
+    /// - [`CarbonChainError::InvalidStatusTransition`] — credit is already `Retired` or `Flagged`.
     pub fn flag_credit(env: Env, verifier: Address, credit_id: BytesN<32>, reason: String) -> Result<(), CarbonChainError> {
         if is_paused(&env) {
             return Err(CarbonChainError::ContractPaused);
@@ -242,6 +306,16 @@ impl CreditRegistry {
         Ok(())
     }
 
+    /// Mark a credit as retired. Only callable by the registered retirement contract.
+    ///
+    /// This is an internal cross-contract call made by the retirement contract after
+    /// recording the retirement receipt. The credit must be [`CreditStatus::Active`].
+    ///
+    /// # Errors
+    /// - [`CarbonChainError::ContractPaused`] — contract is paused.
+    /// - [`CarbonChainError::NotInitialized`] — no retirement contract has been registered.
+    /// - [`CarbonChainError::CreditNotFound`] — no credit exists for `credit_id`.
+    /// - [`CarbonChainError::InvalidStatusTransition`] — credit is not in `Active` status.
     pub fn mark_retired(env: Env, credit_id: BytesN<32>) -> Result<(), CarbonChainError> {
         if is_paused(&env) {
             return Err(CarbonChainError::ContractPaused);
@@ -261,18 +335,31 @@ impl CreditRegistry {
 
     // ── Queries ──────────────────────────────────────────────────────────────
 
+    /// Fetch full metadata for a credit by its ID.
+    ///
+    /// # Errors
+    /// - [`CarbonChainError::CreditNotFound`] — no credit exists for `credit_id`.
     pub fn get_credit(env: Env, credit_id: BytesN<32>) -> Result<CreditMetadata, CarbonChainError> {
         get_credit(&env, &credit_id).ok_or(CarbonChainError::CreditNotFound)
     }
 
+    /// Returns all credit IDs registered under `project_id`.
     pub fn list_credits_by_project(env: Env, project_id: String) -> Vec<BytesN<32>> {
         get_credits_by_project(&env, &project_id)
     }
 
+    /// Returns the current replay-protection nonce for `address`.
+    /// Pass this value as the `nonce` argument to the next state-mutating call.
     pub fn get_nonce(env: Env, address: Address) -> u64 {
         get_nonce(&env, &address)
     }
 
+    /// Propose a new admin. The current admin initiates the transfer; the
+    /// candidate must call [`accept_admin`] to complete it.
+    ///
+    /// # Errors
+    /// - [`CarbonChainError::NotInitialized`] — contract has not been initialised.
+    /// - [`CarbonChainError::Unauthorized`] — caller is not the current admin.
     pub fn propose_admin(env: Env, admin: Address, new_admin: Address) -> Result<(), CarbonChainError> {
         let stored_admin = get_admin(&env).ok_or(CarbonChainError::NotInitialized)?;
         admin.require_auth();
@@ -283,6 +370,12 @@ impl CreditRegistry {
         Ok(())
     }
 
+    /// Complete an admin transfer initiated by [`propose_admin`].
+    /// `new_admin` must match the pending candidate.
+    ///
+    /// # Errors
+    /// - [`CarbonChainError::NoPendingAdmin`] — no transfer has been proposed.
+    /// - [`CarbonChainError::Unauthorized`] — `new_admin` does not match the pending candidate.
     pub fn accept_admin(env: Env, new_admin: Address) -> Result<(), CarbonChainError> {
         let pending: Address = env
             .storage().instance()
@@ -297,6 +390,7 @@ impl CreditRegistry {
         Ok(())
     }
 
+    /// Returns `true` if `address` is a registered verifier.
     pub fn is_verifier(env: Env, address: Address) -> bool {
         is_verifier(&env, &address)
     }
