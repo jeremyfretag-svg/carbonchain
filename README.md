@@ -59,7 +59,7 @@ let credit_id = contract.submit_credit(
         vintage_year: 2024,
         methodology: String::from_str(&env, "VCS"),
         geography: String::from_str(&env, "NG"),
-        tonnes: 1_000_000,   // 1 tonne in kg units
+        tonnes: 1_000_000,   // 1 tonne (1 tonne = 1_000_000 units, i.e. TONNES_SCALE)
         ipfs_hash: String::from_str(&env, "bafybei..."),
     },
 );

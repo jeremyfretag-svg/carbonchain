@@ -9,6 +9,7 @@ pub struct Offer {
     pub seller: Address,
     pub credit_id: BytesN<32>,
     pub price_xlm: i128,   // in stroops
+    /// Carbon volume available in scaled units. 1 tonne = 1_000_000 units.
     pub tonnes: i128,
     pub active: bool,
     pub created_at: u64,

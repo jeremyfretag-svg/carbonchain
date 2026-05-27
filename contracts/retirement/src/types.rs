@@ -5,6 +5,7 @@ use soroban_sdk::{contracttype, Address, String, BytesN};
 pub struct RetirementRecord {
     pub credit_id: BytesN<32>,
     pub buyer: Address,
+    /// Carbon volume retired in scaled units. 1 tonne = 1_000_000 units.
     pub tonnes_retired: i128,
     pub reason: String,
     pub retired_at: u64,
