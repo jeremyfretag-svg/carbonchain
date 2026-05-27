@@ -174,6 +174,15 @@ impl CreditRegistry {
         if tonnes > 1_000_000_000_000_000 {
             return Err(CarbonChainError::InvalidTonnes);
         }
+        // Validate vintage_year: 1990 to current_year + 1
+        let current_year = (env.ledger().timestamp() / 31_536_000) as u32 + 1970;
+        if vintage_year < 1990 || vintage_year > current_year + 1 {
+            return Err(CarbonChainError::InvalidMetadata);
+        }
+        // Validate geography: minimum 2 characters (ISO 3166-1 alpha-2)
+        if geography.len() < 2 {
+            return Err(CarbonChainError::InvalidMetadata);
+        }
 
         // Include a per-contract nonce so two credits for the same project get distinct IDs.
         let nonce: u64 = env.storage().instance().get(&DataKey::CreditNonce).unwrap_or(0u64);
@@ -647,5 +656,95 @@ mod tests {
         let (env, client, _, _) = setup();
         let rando = Address::generate(&env);
         assert!(client.try_pause(&rando).is_err());
+    }
+
+    #[test]
+    fn test_submit_credit_vintage_year_too_old_fails() {
+        let (env, client, _, _) = setup();
+        let issuer = Address::generate(&env);
+        let nonce = client.get_nonce(&issuer);
+        let result = client.try_submit_credit(
+            &issuer,
+            &String::from_str(&env, "PROJ-001"),
+            &1989,
+            &String::from_str(&env, "VCS"),
+            &String::from_str(&env, "NG"),
+            &1_000_000,
+            &String::from_str(&env, "bafybei123"),
+            &nonce,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_submit_credit_vintage_year_valid_1990_succeeds() {
+        let (env, client, _, _) = setup();
+        let issuer = Address::generate(&env);
+        let nonce = client.get_nonce(&issuer);
+        let result = client.try_submit_credit(
+            &issuer,
+            &String::from_str(&env, "PROJ-001"),
+            &1990,
+            &String::from_str(&env, "VCS"),
+            &String::from_str(&env, "NG"),
+            &1_000_000,
+            &String::from_str(&env, "bafybei123"),
+            &nonce,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_submit_credit_empty_geography_fails() {
+        let (env, client, _, _) = setup();
+        let issuer = Address::generate(&env);
+        let nonce = client.get_nonce(&issuer);
+        let result = client.try_submit_credit(
+            &issuer,
+            &String::from_str(&env, "PROJ-001"),
+            &2024,
+            &String::from_str(&env, "VCS"),
+            &String::from_str(&env, ""),
+            &1_000_000,
+            &String::from_str(&env, "bafybei123"),
+            &nonce,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_submit_credit_geography_single_char_fails() {
+        let (env, client, _, _) = setup();
+        let issuer = Address::generate(&env);
+        let nonce = client.get_nonce(&issuer);
+        let result = client.try_submit_credit(
+            &issuer,
+            &String::from_str(&env, "PROJ-001"),
+            &2024,
+            &String::from_str(&env, "VCS"),
+            &String::from_str(&env, "N"),
+            &1_000_000,
+            &String::from_str(&env, "bafybei123"),
+            &nonce,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_submit_credit_geography_valid_iso_succeeds() {
+        let (env, client, _, _) = setup();
+        let issuer = Address::generate(&env);
+        let nonce = client.get_nonce(&issuer);
+        let result = client.try_submit_credit(
+            &issuer,
+            &String::from_str(&env, "PROJ-001"),
+            &2024,
+            &String::from_str(&env, "VCS"),
+            &String::from_str(&env, "NG"),
+            &1_000_000,
+            &String::from_str(&env, "bafybei123"),
+            &nonce,
+        );
+        assert!(result.is_ok());
     }
 }

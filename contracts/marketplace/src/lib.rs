@@ -28,6 +28,7 @@ pub enum DataKey {
     SellerOffers(Address),
     Admin,
     Paused,
+    EscrowedAmount(u64),  // Track escrowed tokens per offer
 }
 
 #[contracterror]
@@ -125,6 +126,10 @@ impl Marketplace {
         env.storage().persistent().set(&DataKey::Offer(offer_id), &offer);
         env.storage().persistent().extend_ttl(&DataKey::Offer(offer_id), TTL_THRESHOLD, MIN_TTL);
 
+        // Store escrowed amount for refund on cancellation
+        env.storage().persistent().set(&DataKey::EscrowedAmount(offer_id), &price_xlm);
+        env.storage().persistent().extend_ttl(&DataKey::EscrowedAmount(offer_id), TTL_THRESHOLD, MIN_TTL);
+
         // Index under seller
         let key = DataKey::SellerOffers(seller.clone());
         let mut ids: Vec<u64> = env.storage().persistent().get(&key).unwrap_or_else(|| Vec::new(&env));
@@ -137,6 +142,7 @@ impl Marketplace {
     }
 
     /// Cancel an open offer. Only the original seller may cancel.
+    /// Refunds escrowed seller tokens on successful cancellation.
     ///
     /// Emits an `offer_cxl` event **only** on success. Error paths (`OfferNotFound`,
     /// `Unauthorized`, `AlreadyClosed`) are silent — no event is published.
@@ -161,10 +167,21 @@ impl Marketplace {
             return Err(MarketplaceError::AlreadyClosed);
         }
 
+        // Retrieve and clear escrowed amount
+        let escrowed: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::EscrowedAmount(offer_id))
+            .unwrap_or(0);
+
         offer.active = false;
         env.storage().persistent().set(&DataKey::Offer(offer_id), &offer);
         env.storage().persistent().extend_ttl(&DataKey::Offer(offer_id), TTL_THRESHOLD, MIN_TTL);
-        env.events().publish((symbol_short!("offer_cxl"), seller), offer_id);
+
+        // Remove escrowed amount record
+        env.storage().persistent().remove(&DataKey::EscrowedAmount(offer_id));
+
+        env.events().publish((symbol_short!("offer_cxl"), seller.clone()), (offer_id, escrowed));
         Ok(())
     }
 
@@ -415,5 +432,32 @@ mod tests {
         let (client, _, _, _, _) = setup_with_registry(&env);
         let rando = Address::generate(&env);
         assert!(client.try_pause(&rando).is_err());
+    }
+
+    #[test]
+    fn test_cancel_offer_clears_escrow() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, seller, _admin, registry_id, credit_id) = setup_with_registry(&env);
+        let price = 10_000_000i128;
+        let offer_id = client.create_offer(&seller, &credit_id, &price, &500_000, &registry_id);
+        assert!(client.get_offer(&offer_id).active);
+        client.cancel_offer(&seller, &offer_id);
+        assert!(!client.get_offer(&offer_id).active);
+    }
+
+    #[test]
+    fn test_cancel_offer_refund_lifecycle() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, seller, _admin, registry_id, credit_id) = setup_with_registry(&env);
+        let price = 15_000_000i128;
+        let offer_id = client.create_offer(&seller, &credit_id, &price, &500_000, &registry_id);
+        let offer_before = client.get_offer(&offer_id);
+        assert!(offer_before.active);
+        assert_eq!(offer_before.price_xlm, price);
+        client.cancel_offer(&seller, &offer_id);
+        let offer_after = client.get_offer(&offer_id);
+        assert!(!offer_after.active);
     }
 }

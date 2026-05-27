@@ -201,6 +201,33 @@ impl MrvOracle {
             .unwrap_or_else(|| Vec::new(&env))
     }
 
+    /// Clear the anomaly flag on the latest MRV reading for a project.
+    /// Only authorized verifiers or admin may call this after reviewing the data.
+    pub fn clear_anomaly_flag(env: Env, verifier: Address, project_id: String, nonce: u64) -> Result<(), OracleError> {
+        if Self::is_paused(&env) {
+            return Err(OracleError::ContractPaused);
+        }
+        verifier.require_auth();
+        if !Self::is_oracle(&env, &verifier) {
+            return Err(OracleError::Unauthorized);
+        }
+        if !Self::consume_nonce(&env, &verifier, nonce) {
+            return Err(OracleError::InvalidNonce);
+        }
+
+        let mut point: MrvDataPoint = env
+            .storage().persistent()
+            .get(&DataKey::Latest(project_id.clone()))
+            .ok_or(OracleError::NotInitialized)?;
+
+        point.anomaly = false;
+        env.storage().persistent().set(&DataKey::Latest(project_id.clone()), &point);
+        env.storage().persistent().extend_ttl(&DataKey::Latest(project_id.clone()), TTL_THRESHOLD, MIN_TTL);
+
+        env.events().publish((symbol_short!("anom_clr"), verifier), project_id);
+        Ok(())
+    }
+
     // ── Internal ─────────────────────────────────────────────────────────────
 
     fn require_admin(env: &Env, caller: &Address) -> Result<(), OracleError> {
@@ -437,5 +464,47 @@ mod tests {
         let (env, client, _, _) = setup();
         let rando = Address::generate(&env);
         assert!(client.try_pause(&rando).is_err());
+    }
+
+    #[test]
+    fn test_clear_anomaly_flag_after_review() {
+        let (env, client, _admin, oracle) = setup();
+        let proj = String::from_str(&env, "PROJ-001");
+        let nonce = client.get_nonce(&oracle);
+        client.update_mrv_data(&oracle, &proj, &1_000_000, &nonce);
+        let nonce2 = client.get_nonce(&oracle);
+        client.update_mrv_data(&oracle, &proj, &1_500_000, &nonce2);
+        assert!(client.get_latest(&proj).unwrap().anomaly);
+        let nonce3 = client.get_nonce(&oracle);
+        client.clear_anomaly_flag(&oracle, &proj, &nonce3);
+        assert!(!client.get_latest(&proj).unwrap().anomaly);
+    }
+
+    #[test]
+    fn test_clear_anomaly_flag_full_lifecycle() {
+        let (env, client, _admin, oracle) = setup();
+        let proj = String::from_str(&env, "PROJ-LIFECYCLE");
+        let nonce = client.get_nonce(&oracle);
+        client.update_mrv_data(&oracle, &proj, &1_000_000, &nonce);
+        let nonce2 = client.get_nonce(&oracle);
+        let anomaly_detected = client.update_mrv_data(&oracle, &proj, &1_600_000, &nonce2);
+        assert!(anomaly_detected);
+        assert!(client.get_latest(&proj).unwrap().anomaly);
+        let nonce3 = client.get_nonce(&oracle);
+        client.clear_anomaly_flag(&oracle, &proj, &nonce3);
+        assert!(!client.get_latest(&proj).unwrap().anomaly);
+    }
+
+    #[test]
+    fn test_unauthorized_cannot_clear_anomaly_flag() {
+        let (env, client, _admin, oracle) = setup();
+        let proj = String::from_str(&env, "PROJ-001");
+        let nonce = client.get_nonce(&oracle);
+        client.update_mrv_data(&oracle, &proj, &1_000_000, &nonce);
+        let nonce2 = client.get_nonce(&oracle);
+        client.update_mrv_data(&oracle, &proj, &1_500_000, &nonce2);
+        let rogue = Address::generate(&env);
+        let nonce3 = client.get_nonce(&rogue);
+        assert!(client.try_clear_anomaly_flag(&rogue, &proj, &nonce3).is_err());
     }
 }
