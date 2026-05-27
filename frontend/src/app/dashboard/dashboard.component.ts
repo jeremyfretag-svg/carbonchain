@@ -36,7 +36,7 @@ export class DashboardComponent implements OnInit {
   }
 
   formatTonnes(raw: string): string {
-    // tonnes stored as BigInt string — display as a locale number
-    return BigInt(raw).toLocaleString();
+    // tonnes stored as BigInt string — divide by TONNES_SCALE (1_000_000) to display in tonnes
+    return (Number(BigInt(raw)) / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 4 }) + ' t';
   }
 }
