@@ -11,6 +11,7 @@ use soroban_sdk::{
 pub struct MrvDataPoint {
     pub oracle: Address,
     pub project_id: String,
+    /// Carbon sequestration in scaled units. 1 tonne = 1_000_000 units.
     pub tonnes: i128,
     pub recorded_at: u64,
     /// Flagged when the reading deviates >20% from the previous reading.

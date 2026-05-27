@@ -170,7 +170,7 @@ impl CreditRegistry {
         if tonnes <= 0 {
             return Err(CarbonChainError::InvalidTonnes);
         }
-        // 1 billion tonnes upper bound (in kg units: 1e15)
+        // 1 billion tonnes upper bound (1_000_000_000 * TONNES_SCALE = 1e15)
         if tonnes > 1_000_000_000_000_000 {
             return Err(CarbonChainError::InvalidTonnes);
         }

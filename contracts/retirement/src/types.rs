@@ -10,6 +10,7 @@ pub const TTL_THRESHOLD: u32 = MIN_TTL / 2;
 pub struct RetirementRecord {
     pub credit_id: BytesN<32>,
     pub buyer: Address,
+    /// Carbon volume retired in scaled units. 1 tonne = 1_000_000 units.
     pub tonnes_retired: i128,
     pub reason: String,
     pub retired_at: u64,
